@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from torch.nn import Module, ModuleList
 from einops import einsum, rearrange
+from associative_scan import associative_scan
 
 class RMSNorm(Module):
 
@@ -47,7 +48,17 @@ class GateLoopAttention(Module):
 
     @staticmethod
     def _gate_loop(q, k, v, a):
-        return k
+        kv = einsum(k, v, 'b n d, b n e -> b n d e')
+        kv = kv + 0.j
+
+        def binary_operator(a, b):
+            a_i, kv_i = a
+            a_j, kv_j = b
+            return a_j * a_i, a_j * kv_i + kv_j
+
+        _, kv = associative_scan(binary_operator, (a, kv))
+
+        return einsum('b n d, b n d e -> b n e', q, kv.real)
     
 class FeedForward(Module):
 
